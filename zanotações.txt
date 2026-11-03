@@ -1,0 +1,7 @@
+Anotar o que não funciona 
+
+Não vai os avisos para o calendario Mas vai os avisos certinho para o banco de dados,
+
+Não fica em ordem correta os ID no cardápio do banco de dados,
+
+    

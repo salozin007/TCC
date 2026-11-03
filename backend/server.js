@@ -110,9 +110,15 @@ app.get('/usuario/:id', async (req, res) => {
 // CARDÁPIO - CRUD COMPLETO
 // =====================================================
 
-// GET - Buscar todo o cardápio com informações de dia e refeição
+
+// =====================================================
+// GET - Buscar todo o cardápio
+// =====================================================
+
 app.get('/cardapio', async (req, res) => {
+
   try {
+
     const [results] = await db.query(`
       SELECT
         c.id_cardapio,
@@ -120,64 +126,154 @@ app.get('/cardapio', async (req, res) => {
         c.fk_id_horario,
         h.id_horario,
         h.hora,
-        h.dia
+        DATE_FORMAT(h.dia, '%Y-%m-%d') AS dia
       FROM Cardapio c
+
       INNER JOIN Horario h
         ON c.fk_id_horario = h.id_horario
-      ORDER BY h.dia ASC, h.hora ASC, c.id_cardapio ASC
+
+      ORDER BY
+        h.dia ASC,
+        h.hora ASC,
+        c.id_cardapio ASC
     `);
 
     return res.status(200).json(results);
+
   } catch (err) {
-    console.error('❌ Erro ao buscar cardápio:', err);
-    return res.status(500).json({ mensagem: 'Erro ao buscar cardápio.' });
-  }
-});
 
-// GET - Buscar opções disponíveis de alimentos
-app.get('/cardapio/opcoes', async (req, res) => {
-  try {
-    const [results] = await db.query(`
-      SELECT id_opcao, refeicao_id, nome
-      FROM OpcaoAlimento
-      ORDER BY refeicao_id ASC, nome ASC
-    `);
-    return res.status(200).json(results);
-  } catch (err) {
-    console.error('❌ Erro ao buscar opções de alimentos:', err);
-    return res.status(500).json({ mensagem: 'Erro ao buscar opções de alimentos.' });
-  }
-});
-
-// POST - Adicionar nova opção de alimento para uma refeição
-app.post('/cardapio/opcoes', async (req, res) => {
-  const { refeicao_id, nome } = req.body;
-
-  if (!refeicao_id || !nome || !nome.trim()) {
-    return res.status(400).json({ mensagem: 'Refeição e nome do alimento são obrigatórios.' });
-  }
-
-  try {
-    const [result] = await db.query(
-      `INSERT IGNORE INTO OpcaoAlimento (refeicao_id, nome) VALUES (?, ?)`,
-      [refeicao_id, nome.trim()]
+    console.error(
+      '❌ Erro ao buscar cardápio:',
+      err
     );
 
-    return res.status(201).json({
-      mensagem: 'Opção de alimento registrada com sucesso!',
-      id_opcao: result.insertId
+    return res.status(500).json({
+      mensagem: 'Erro ao buscar cardápio.'
     });
-  } catch (err) {
-    console.error('❌ Erro ao cadastrar opção de alimento:', err);
-    return res.status(500).json({ mensagem: 'Erro ao cadastrar opção de alimento.' });
+
   }
+
 });
 
-// GET - Buscar item específico por ID (registrado antes de /:dia para evitar colisão)
-app.get('/cardapio/id/:id', async (req, res) => {
-  const { id } = req.params;
+
+// =====================================================
+// GET - Buscar opções disponíveis de alimentos
+// =====================================================
+
+app.get('/cardapio/opcoes', async (req, res) => {
 
   try {
+
+    const [results] = await db.query(`
+      SELECT
+        id_opcao,
+        refeicao_id,
+        nome
+      FROM OpcaoAlimento
+      ORDER BY
+        refeicao_id ASC,
+        nome ASC
+    `);
+
+    return res.status(200).json(results);
+
+  } catch (err) {
+
+    console.error(
+      '❌ Erro ao buscar opções de alimentos:',
+      err
+    );
+
+    return res.status(500).json({
+      mensagem: 'Erro ao buscar opções de alimentos.'
+    });
+
+  }
+
+});
+
+
+// =====================================================
+// POST - Adicionar opção de alimento
+// =====================================================
+
+app.post('/cardapio/opcoes', async (req, res) => {
+
+  const {
+    refeicao_id,
+    nome
+  } = req.body;
+
+
+  if (
+    !refeicao_id ||
+    !nome ||
+    !nome.trim()
+  ) {
+
+    return res.status(400).json({
+      mensagem:
+        'Refeição e nome do alimento são obrigatórios.'
+    });
+
+  }
+
+
+  try {
+
+    const [result] = await db.query(
+      `
+      INSERT IGNORE INTO OpcaoAlimento
+      (refeicao_id, nome)
+      VALUES (?, ?)
+      `,
+      [
+        refeicao_id,
+        nome.trim()
+      ]
+    );
+
+
+    return res.status(201).json({
+
+      mensagem:
+        'Opção de alimento registrada com sucesso!',
+
+      id_opcao:
+        result.insertId
+
+    });
+
+  } catch (err) {
+
+    console.error(
+      '❌ Erro ao cadastrar opção de alimento:',
+      err
+    );
+
+    return res.status(500).json({
+      mensagem:
+        'Erro ao cadastrar opção de alimento.'
+    });
+
+  }
+
+});
+
+
+// =====================================================
+// GET - Buscar item específico
+// =====================================================
+
+app.get('/cardapio/id/:id', async (req, res) => {
+
+  const {
+    id
+  } = req.params;
+
+
+  try {
+
     const [results] = await db.query(`
       SELECT
         c.id_cardapio,
@@ -185,29 +281,61 @@ app.get('/cardapio/id/:id', async (req, res) => {
         c.fk_id_horario,
         h.id_horario,
         h.hora,
-        h.dia
+        DATE_FORMAT(h.dia, '%Y-%m-%d') AS dia
+
       FROM Cardapio c
+
       INNER JOIN Horario h
         ON c.fk_id_horario = h.id_horario
+
       WHERE c.id_cardapio = ?
     `, [id]);
 
+
     if (results.length === 0) {
-      return res.status(404).json({ mensagem: 'Item do cardápio não encontrado.' });
+
+      return res.status(404).json({
+        mensagem:
+          'Item do cardápio não encontrado.'
+      });
+
     }
 
-    return res.status(200).json(results[0]);
+
+    return res.status(200).json(
+      results[0]
+    );
+
   } catch (err) {
-    console.error('❌ Erro ao buscar item do cardápio:', err);
-    return res.status(500).json({ mensagem: 'Erro ao buscar item do cardápio.' });
+
+    console.error(
+      '❌ Erro ao buscar item:',
+      err
+    );
+
+    return res.status(500).json({
+      mensagem:
+        'Erro ao buscar item do cardápio.'
+    });
+
   }
+
 });
 
-// GET - Buscar cardápio por data (ex: /cardapio/2026-09-18)
+
+// =====================================================
+// GET - Buscar cardápio por data
+// =====================================================
+
 app.get('/cardapio/:dia', async (req, res) => {
-  const { dia } = req.params;
+
+  const {
+    dia
+  } = req.params;
+
 
   try {
+
     const [results] = await db.query(`
       SELECT
         c.id_cardapio,
@@ -215,170 +343,568 @@ app.get('/cardapio/:dia', async (req, res) => {
         c.fk_id_horario,
         h.id_horario,
         h.hora,
-        h.dia
+        DATE_FORMAT(h.dia, '%Y-%m-%d') AS dia
+
       FROM Cardapio c
+
       INNER JOIN Horario h
         ON c.fk_id_horario = h.id_horario
+
       WHERE h.dia = ?
-      ORDER BY h.hora ASC, c.id_cardapio ASC
+
+      ORDER BY
+        h.hora ASC,
+        c.id_cardapio ASC
+
     `, [dia]);
 
-    return res.status(200).json(results);
+
+    return res.status(200).json(
+      results
+    );
+
   } catch (err) {
-    console.error('❌ Erro ao buscar cardápio por data:', err);
-    return res.status(500).json({ mensagem: 'Erro ao buscar cardápio.' });
+
+    console.error(
+      '❌ Erro ao buscar cardápio por data:',
+      err
+    );
+
+    return res.status(500).json({
+      mensagem:
+        'Erro ao buscar cardápio.'
+    });
+
   }
+
 });
 
-// POST - Salvar seleção completa de alimentos para uma refeição de um dia (Atomic Sync)
-app.post('/cardapio/refeicao', async (req, res) => {
-  const { dia, hora, comidas } = req.body;
 
-  if (!dia || hora === undefined || !Array.isArray(comidas)) {
+// =====================================================
+// POST - Salvar refeição completa
+// =====================================================
+
+app.post('/cardapio/refeicao', async (req, res) => {
+
+  const {
+    dia,
+    hora,
+    comidas
+  } = req.body;
+
+
+  // ---------------------------------------------------
+  // VALIDAÇÃO
+  // ---------------------------------------------------
+
+  if (
+    !dia ||
+    hora === undefined ||
+    !Array.isArray(comidas)
+  ) {
+
     return res.status(400).json({
-      mensagem: 'Informe o dia, o horário/refeição e a lista de comidas.'
+
+      mensagem:
+        'Informe o dia, o horário/refeição e a lista de comidas.'
+
     });
+
   }
 
+
   try {
-    // 1. Busca ou cria o Horario
+
+    // -------------------------------------------------
+    // 1. Buscar horário existente
+    // -------------------------------------------------
+
     let [horarios] = await db.query(
-      `SELECT id_horario FROM Horario WHERE dia = ? AND hora = ?`,
-      [dia, hora]
+      `
+      SELECT
+        id_horario
+
+      FROM Horario
+
+      WHERE
+        dia = ?
+        AND hora = ?
+      `,
+      [
+        dia,
+        hora
+      ]
     );
+
+
+    // -------------------------------------------------
+    // 2. Criar horário caso não exista
+    // -------------------------------------------------
 
     let idHorario;
+
+
     if (horarios.length === 0) {
-      const [insertH] = await db.query(
-        `INSERT INTO Horario (dia, hora) VALUES (?, ?)`,
-        [dia, hora]
+
+      const [
+        insertH
+      ] = await db.query(
+        `
+        INSERT INTO Horario
+        (dia, hora)
+
+        VALUES (?, ?)
+        `,
+        [
+          dia,
+          hora
+        ]
       );
-      idHorario = insertH.insertId;
+
+
+      idHorario =
+        insertH.insertId;
+
     } else {
-      idHorario = horarios[0].id_horario;
+
+      idHorario =
+        horarios[0].id_horario;
+
     }
 
-    // 2. Remove os itens antigos daquela refeição/dia
-    await db.query(`DELETE FROM Cardapio WHERE fk_id_horario = ?`, [idHorario]);
 
-    // 3. Insere os novos itens
-    for (const comida of comidas) {
-      if (typeof comida === 'string' && comida.trim()) {
-        await db.query(
-          `INSERT INTO Cardapio (comida, fk_id_horario) VALUES (?, ?)`,
-          [comida.trim(), idHorario]
-        );
-      }
-    }
+    // -------------------------------------------------
+    // 3. Remover alimentos antigos
+    // -------------------------------------------------
 
-    return res.status(200).json({
-      sucesso: true,
-      mensagem: 'Cardápio da refeição atualizado com sucesso!',
-      id_horario: idHorario,
-      total_itens: comidas.length
-    });
-  } catch (err) {
-    console.error('❌ Erro ao salvar refeição do cardápio:', err);
-    return res.status(500).json({ mensagem: 'Erro ao salvar refeição do cardápio.' });
-  }
-});
-
-// POST - Cadastrar item individual no cardápio
-app.post('/cardapio', async (req, res) => {
-  const { comida, fk_id_horario, dia, hora } = req.body;
-
-  if (!comida || (!fk_id_horario && (!dia || hora === undefined))) {
-    return res.status(400).json({
-      mensagem: 'Comida e horário (ou dia e hora) são obrigatórios.'
-    });
-  }
-
-  try {
-    let horarioId = fk_id_horario;
-
-    if (!horarioId) {
-      let [horarios] = await db.query(
-        `SELECT id_horario FROM Horario WHERE dia = ? AND hora = ?`,
-        [dia, hora]
-      );
-      if (horarios.length === 0) {
-        const [insertH] = await db.query(
-          `INSERT INTO Horario (dia, hora) VALUES (?, ?)`,
-          [dia, hora]
-        );
-        horarioId = insertH.insertId;
-      } else {
-        horarioId = horarios[0].id_horario;
-      }
-    }
-
-    const [result] = await db.query(
-      `INSERT INTO Cardapio (comida, fk_id_horario) VALUES (?, ?)`,
-      [comida.trim(), horarioId]
+    await db.query(
+      `
+      DELETE FROM Cardapio
+      WHERE fk_id_horario = ?
+      `,
+      [
+        idHorario
+      ]
     );
 
-    return res.status(201).json({
-      mensagem: 'Item adicionado ao cardápio com sucesso!',
-      id_cardapio: result.insertId
+
+    // -------------------------------------------------
+    // 4. Inserir novos alimentos
+    // -------------------------------------------------
+
+    for (
+      const comida of comidas
+    ) {
+
+      if (
+        typeof comida === 'string' &&
+        comida.trim()
+      ) {
+
+        await db.query(
+          `
+          INSERT INTO Cardapio
+          (
+            comida,
+            fk_id_horario
+          )
+
+          VALUES (?, ?)
+          `,
+          [
+            comida.trim(),
+            idHorario
+          ]
+        );
+
+      }
+
+    }
+
+
+    // -------------------------------------------------
+    // 5. Resposta
+    // -------------------------------------------------
+
+    return res.status(200).json({
+
+      sucesso: true,
+
+      mensagem:
+        'Cardápio da refeição atualizado com sucesso!',
+
+      id_horario:
+        idHorario,
+
+      total_itens:
+        comidas.filter(
+          comida =>
+            typeof comida === 'string' &&
+            comida.trim()
+        ).length
+
     });
+
+
   } catch (err) {
-    console.error('❌ Erro ao cadastrar item:', err);
-    return res.status(500).json({ mensagem: 'Erro ao cadastrar item no cardápio.' });
+
+    console.error(
+      '❌ Erro ao salvar refeição:',
+      err
+    );
+
+    return res.status(500).json({
+
+      mensagem:
+        'Erro ao salvar refeição do cardápio.'
+
+    });
+
   }
+
 });
 
-// PUT - Atualizar item do cardápio
+
+// =====================================================
+// POST - Cadastrar item individual
+// =====================================================
+
+app.post('/cardapio', async (req, res) => {
+
+  const {
+    comida,
+    fk_id_horario,
+    dia,
+    hora
+  } = req.body;
+
+
+  if (
+    !comida ||
+    (
+      !fk_id_horario &&
+      (!dia || hora === undefined)
+    )
+  ) {
+
+    return res.status(400).json({
+
+      mensagem:
+        'Comida e horário (ou dia e hora) são obrigatórios.'
+
+    });
+
+  }
+
+
+  try {
+
+    let horarioId =
+      fk_id_horario;
+
+
+    // -------------------------------------------------
+    // Criar/buscar horário
+    // -------------------------------------------------
+
+    if (!horarioId) {
+
+      let [
+        horarios
+      ] = await db.query(
+        `
+        SELECT
+          id_horario
+
+        FROM Horario
+
+        WHERE
+          dia = ?
+          AND hora = ?
+        `,
+        [
+          dia,
+          hora
+        ]
+      );
+
+
+      if (
+        horarios.length === 0
+      ) {
+
+        const [
+          insertH
+        ] = await db.query(
+          `
+          INSERT INTO Horario
+          (dia, hora)
+
+          VALUES (?, ?)
+          `,
+          [
+            dia,
+            hora
+          ]
+        );
+
+
+        horarioId =
+          insertH.insertId;
+
+      } else {
+
+        horarioId =
+          horarios[0].id_horario;
+      }
+    }
+
+
+    // -------------------------------------------------
+    // Inserir alimento
+    // -------------------------------------------------
+
+    const [
+      result
+    ] = await db.query(
+      `
+      INSERT INTO Cardapio
+      (
+        comida,
+        fk_id_horario
+      )
+
+      VALUES (?, ?)
+      `,
+      [
+        comida.trim(),
+        horarioId
+      ]
+    );
+
+
+    return res.status(201).json({
+
+      mensagem:
+        'Item adicionado ao cardápio com sucesso!',
+
+      id_cardapio:
+        result.insertId
+
+    });
+
+
+  } catch (err) {
+
+    console.error(
+      '❌ Erro ao cadastrar item:',
+      err
+    );
+
+    return res.status(500).json({
+
+      mensagem:
+        'Erro ao cadastrar item no cardápio.'
+
+    });
+
+  }
+
+});
+
+
+// =====================================================
+// PUT - Atualizar item
+// =====================================================
+
 app.put('/cardapio/:id', async (req, res) => {
-  const { id } = req.params;
-  const { comida, fk_id_horario } = req.body;
+
+  const {
+    id
+  } = req.params;
+
+  const {
+    comida,
+    fk_id_horario
+  } = req.body;
+
 
   if (!comida) {
-    return res.status(400).json({ mensagem: 'O campo comida é obrigatório.' });
+
+    return res.status(400).json({
+
+      mensagem:
+        'O campo comida é obrigatório.'
+
+    });
+
   }
 
+
   try {
-    const [item] = await db.query(`SELECT id_cardapio FROM Cardapio WHERE id_cardapio = ?`, [id]);
-    if (item.length === 0) {
-      return res.status(404).json({ mensagem: 'Item do cardápio não encontrado.' });
+
+    const [
+      item
+    ] = await db.query(
+      `
+      SELECT
+        id_cardapio
+
+      FROM Cardapio
+
+      WHERE id_cardapio = ?
+      `,
+      [
+        id
+      ]
+    );
+
+
+    if (
+      item.length === 0
+    ) {
+
+      return res.status(404).json({
+
+        mensagem:
+          'Item do cardápio não encontrado.'
+
+      });
+
     }
+
 
     if (fk_id_horario) {
+
       await db.query(
-        `UPDATE Cardapio SET comida = ?, fk_id_horario = ? WHERE id_cardapio = ?`,
-        [comida.trim(), fk_id_horario, id]
+        `
+        UPDATE Cardapio
+
+        SET
+          comida = ?,
+          fk_id_horario = ?
+
+        WHERE id_cardapio = ?
+        `,
+        [
+          comida.trim(),
+          fk_id_horario,
+          id
+        ]
       );
+
     } else {
+
       await db.query(
-        `UPDATE Cardapio SET comida = ? WHERE id_cardapio = ?`,
-        [comida.trim(), id]
+        `
+        UPDATE Cardapio
+
+        SET comida = ?
+
+        WHERE id_cardapio = ?
+        `,
+        [
+          comida.trim(),
+          id
+        ]
       );
+
     }
 
-    return res.status(200).json({ mensagem: 'Item do cardápio atualizado com sucesso!' });
+
+    return res.status(200).json({
+
+      mensagem:
+        'Item do cardápio atualizado com sucesso!'
+
+    });
+
+
   } catch (err) {
-    console.error('❌ Erro ao atualizar item:', err);
-    return res.status(500).json({ mensagem: 'Erro ao atualizar item do cardápio.' });
+
+    console.error(
+      '❌ Erro ao atualizar item:',
+      err
+    );
+
+    return res.status(500).json({
+
+      mensagem:
+        'Erro ao atualizar item do cardápio.'
+
+    });
+
   }
+
 });
 
-// DELETE - Excluir item do cardápio
+
+// =====================================================
+// DELETE - Excluir item
+// =====================================================
+
 app.delete('/cardapio/:id', async (req, res) => {
-  const { id } = req.params;
+
+  const {
+    id
+  } = req.params;
+
 
   try {
-    const [result] = await db.query(`DELETE FROM Cardapio WHERE id_cardapio = ?`, [id]);
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ mensagem: 'Item do cardápio não encontrado.' });
+    const [
+      result
+    ] = await db.query(
+      `
+      DELETE FROM Cardapio
+
+      WHERE id_cardapio = ?
+      `,
+      [
+        id
+      ]
+    );
+
+
+    if (
+      result.affectedRows === 0
+    ) {
+
+      return res.status(404).json({
+
+        mensagem:
+          'Item do cardápio não encontrado.'
+
+      });
+
     }
 
-    return res.status(200).json({ mensagem: 'Item removido do cardápio com sucesso!' });
-  } catch (err) {
-    console.error('❌ Erro ao excluir item:', err);
-    return res.status(500).json({ mensagem: 'Erro ao excluir item do cardápio.' });
-  }
-});
 
+    return res.status(200).json({
+
+      mensagem:
+        'Item removido do cardápio com sucesso!'
+
+    });
+
+
+  } catch (err) {
+
+    console.error(
+      '❌ Erro ao excluir item:',
+      err
+    );
+
+    return res.status(500).json({
+
+      mensagem:
+        'Erro ao excluir item do cardápio.'
+
+    });
+
+  }
+
+});
 
 // =====================================================
 // AVISOS - CRUD COMPLETO
