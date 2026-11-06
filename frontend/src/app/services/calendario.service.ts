@@ -12,6 +12,20 @@ export interface Evento {
   data: string;
   horario: string;
   local: string;
+  tipo?: 'evento' | 'aviso';
+}
+
+export interface RefeicaoCadastrada {
+  hora: number;
+  nome: string;
+  comidas: string[];
+}
+
+export interface DiaComCardapio {
+  dia: string;
+  totalItens: number;
+  totalRefeicoes: number;
+  refeicoes: RefeicaoCadastrada[];
 }
 
 export type NovoEvento = Omit<Evento, 'id'>;
@@ -25,6 +39,7 @@ interface EventoBackend {
   data: string;
   horario: string;
   local: string;
+  tipo?: 'evento' | 'aviso';
 }
 
 function mapearDoBackend(item: EventoBackend): Evento {
@@ -34,9 +49,10 @@ function mapearDoBackend(item: EventoBackend): Evento {
     descricao: item.descricao,
     categoria: item.categoria,
     cor: item.cor || 'azul',
-    data: item.data,
+    data: item.data ? String(item.data).slice(0, 10) : '',
     horario: item.horario,
     local: item.local,
+    tipo: item.tipo || (item.id_evento >= 100000 ? 'aviso' : 'evento'),
   };
 }
 
@@ -44,13 +60,17 @@ function mapearDoBackend(item: EventoBackend): Evento {
 export class CalendarioService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = 'http://localhost:3000/eventos';
+  private readonly apiUrlCardapio = 'http://localhost:3000/cardapio/dias-cadastrados';
   private readonly dadosEscola = inject(DadosEscolaService);
 
   private readonly listaEventos = signal<Evento[]>(
-    this.dadosEscola.eventos.map((e) => ({ ...e })),
+    this.dadosEscola.eventos.map((e) => ({ ...e, tipo: 'evento' as const })),
   );
 
+  private readonly mapaCardapio = signal<Record<string, DiaComCardapio>>({});
+
   readonly todos = this.listaEventos.asReadonly();
+  readonly cardapioPorDia = this.mapaCardapio.asReadonly();
 
   constructor() {
     this.carregar();
@@ -68,6 +88,31 @@ export class CalendarioService {
           'Backend indisponível no momento para eventos. Usando dados locais.',
           err,
         );
+      },
+    });
+
+    this.carregarDiasCardapio();
+  }
+
+  carregarDiasCardapio(): void {
+    this.http.get<DiaComCardapio[]>(this.apiUrlCardapio).subscribe({
+      next: (dados) => {
+        if (dados && Array.isArray(dados)) {
+          const mapa: Record<string, DiaComCardapio> = {};
+          dados.forEach((item) => {
+            if (item.dia) {
+              const chave = String(item.dia).slice(0, 10);
+              mapa[chave] = {
+                ...item,
+                dia: chave,
+              };
+            }
+          });
+          this.mapaCardapio.set(mapa);
+        }
+      },
+      error: (err) => {
+        console.warn('Backend indisponível para dias de cardápio.', err);
       },
     });
   }

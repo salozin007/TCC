@@ -291,14 +291,22 @@ export class CardapioService {
 
     this.publicado.set(copiar(this.salvo()));
 
-    // Salva todos os dias e refeições no backend
-    this.dias.forEach((dia, diaIdx) => {
-      this.refeicoes.forEach((refeicao) => {
-        const itens = this.salvo()[diaIdx][refeicao.id];
-        if (itens && itens.length > 0) {
-          this.salvarRefeicao(dia.dataApi, refeicao.horaIndex, itens).subscribe();
-        }
-      });
+    // Salva semana completa de forma atômica e ordenada no backend (garante IDs na ordem correta)
+    const semanaCompleta = this.dias.map((dia, diaIdx) => ({
+      dia: dia.dataApi,
+      refeicoes: this.refeicoes.map((ref) => ({
+        hora: ref.horaIndex,
+        comidas: this.salvo()[diaIdx][ref.id] || [],
+      })),
+    }));
+
+    this.salvarSemanaCompleta(semanaCompleta).subscribe({
+      next: () => {
+        console.log('✅ Semana completa do cardápio salva e IDs organizados com sucesso.');
+      },
+      error: (err) => {
+        console.warn('Backend indisponível no momento para salvar semana. Mantendo estado local.', err);
+      },
     });
 
     return true;
@@ -364,6 +372,14 @@ export class CardapioService {
       hora,
       comidas,
     });
+  }
+
+  salvarSemanaCompleta(dias: any[]): Observable<any> {
+    return this.http.post(`${this.apiUrl}/semana-completa`, { dias });
+  }
+
+  buscarDiasCadastrados(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/dias-cadastrados`);
   }
 
   buscarOpcoes(): Observable<{ id_opcao: number; refeicao_id: string; nome: string }[]> {

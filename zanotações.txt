@@ -1,7 +1,17 @@
-Anotar o que não funciona 
+Anotações do Sistema - E.E. Monsenhor Bicudo
 
-Não vai os avisos para o calendario Mas vai os avisos certinho para o banco de dados,
+[RESOLVIDO] 1. Não vai os avisos para o calendário, mas vai os avisos certinho para o banco de dados:
+- O endpoint GET /eventos no backend foi unificado com a tabela Aviso via UNION ALL, formatando as datas de forma padronizada (YYYY-MM-DD) e calculando cores, horários e badges ('📢 Aviso Escolar').
+- O CalendarioService e o componente Calendario agora exibem todos os avisos cadastrados no banco de dados nas respectivas datas.
+- As categorias de avisos ('Reuniões', 'Feriados', 'Eventos', 'Geral') foram integradas aos botões de filtro do calendário.
+- Sempre que um aviso é publicado, alterado ou excluído na área administrativa, o calendário é sincronizado automaticamente.
 
-Não fica em ordem correta os ID no cardápio do banco de dados,
+[RESOLVIDO] 2. Não fica em ordem correta os IDs no cardápio do banco de dados:
+- Implementada a rotina de reordenação automática 'reorganizarIdsCardapio()' no backend, que renumera sequencialmente os IDs de Cardapio (1, 2, 3...) em ordem cronológica de dia (Segunda a Sexta) e horário da refeição (Café da Manhã -> Almoço -> Café da Tarde).
+- Implementado o endpoint POST /cardapio/semana-completa para publicação atômica e ordenada da semana inteira, evitando inserções concorrentes desordenadas.
+- A reorganização é executada automaticamente na inicialização do servidor, na inserção de refeições e na exclusão de itens.
 
-    
+[RESOLVIDO] 3. No calendário tem que ter algum tipo de comprovação que em determinada data já foi cadastrado uma refeição:
+- Criado o endpoint GET /cardapio/dias-cadastrados que traz o mapa de dias com refeições e itens confirmados.
+- Na grade do calendário mensal, dias com cardápio registrado exibem o selo comprobatório '🍲 Refeição' com destaque verde.
+- Ao selecionar qualquer dia com refeição, o painel lateral exibe a confirmação oficial '🍲 Refeição Cadastrada' listando cada refeição e seus respectivos pratos, além de atalho direto para a página do cardápio.

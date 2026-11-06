@@ -107,6 +107,44 @@ app.get('/usuario/:id', async (req, res) => {
 
 
 // =====================================================
+// FUNÇÃO AUXILIAR: REORGANIZAR IDS DO CARDÁPIO EM ORDEM
+// =====================================================
+
+async function reorganizarIdsCardapio() {
+  try {
+    const [itens] = await db.query(`SELECT COUNT(*) as total FROM Cardapio`);
+    if (!itens || itens[0].total === 0) {
+      await db.query(`ALTER TABLE Cardapio AUTO_INCREMENT = 1`);
+      return;
+    }
+
+    await db.query(`DROP TEMPORARY TABLE IF EXISTS Cardapio_Temp`);
+    await db.query(`
+      CREATE TEMPORARY TABLE Cardapio_Temp AS
+      SELECT c.comida, c.fk_id_horario
+      FROM Cardapio c
+      INNER JOIN Horario h ON c.fk_id_horario = h.id_horario
+      ORDER BY h.dia ASC, h.hora ASC, c.id_cardapio ASC
+    `);
+
+    await db.query(`DELETE FROM Cardapio`);
+    await db.query(`ALTER TABLE Cardapio AUTO_INCREMENT = 1`);
+
+    await db.query(`
+      INSERT INTO Cardapio (comida, fk_id_horario)
+      SELECT comida, fk_id_horario FROM Cardapio_Temp
+    `);
+
+    await db.query(`DROP TEMPORARY TABLE IF EXISTS Cardapio_Temp`);
+
+    console.log(`🔄 IDs da tabela Cardapio reorganizados com sucesso (1 até ${itens[0].total}).`);
+  } catch (err) {
+    console.error('❌ Erro ao reorganizar IDs do cardápio:', err);
+  }
+}
+
+
+// =====================================================
 // CARDÁPIO - CRUD COMPLETO
 // =====================================================
 
@@ -153,6 +191,69 @@ app.get('/cardapio', async (req, res) => {
 
   }
 
+});
+
+
+// =====================================================
+// GET - Buscar dias com refeições cadastradas (comprovação no calendário)
+// =====================================================
+
+app.get('/cardapio/dias-cadastrados', async (req, res) => {
+  try {
+    const [results] = await db.query(`
+      SELECT
+        DATE_FORMAT(h.dia, '%Y-%m-%d') AS dia,
+        h.hora,
+        c.comida
+      FROM Horario h
+      INNER JOIN Cardapio c ON c.fk_id_horario = h.id_horario
+      ORDER BY h.dia ASC, h.hora ASC, c.id_cardapio ASC
+    `);
+
+    const mapaDias = {};
+    const nomesRefeicao = {
+      0: 'Café da Manhã',
+      1: 'Almoço',
+      2: 'Café da Tarde'
+    };
+
+    for (const row of results) {
+      const diaFormatado = row.dia;
+      if (!diaFormatado) continue;
+
+      if (!mapaDias[diaFormatado]) {
+        mapaDias[diaFormatado] = {
+          dia: diaFormatado,
+          refeicoesMap: {},
+          totalItens: 0
+        };
+      }
+
+      const nomeRef = nomesRefeicao[row.hora] || `Refeição ${row.hora}`;
+      if (!mapaDias[diaFormatado].refeicoesMap[nomeRef]) {
+        mapaDias[diaFormatado].refeicoesMap[nomeRef] = {
+          hora: row.hora,
+          nome: nomeRef,
+          comidas: []
+        };
+      }
+
+      mapaDias[diaFormatado].refeicoesMap[nomeRef].comidas.push(row.comida);
+      mapaDias[diaFormatado].totalItens++;
+    }
+
+    const resposta = Object.values(mapaDias).map(d => ({
+      dia: d.dia,
+      totalItens: d.totalItens,
+      totalRefeicoes: Object.keys(d.refeicoesMap).length,
+      refeicoes: Object.values(d.refeicoesMap)
+    }));
+
+    return res.status(200).json(resposta);
+  } catch (err) {
+    console.error('❌ Erro ao buscar dias com refeições:', err);
+    return res.status(500).json({ mensagem: 'Erro ao buscar dias cadastrados no cardápio.' });
+  }
 });
 
 
@@ -523,7 +624,14 @@ app.post('/cardapio/refeicao', async (req, res) => {
 
 
     // -------------------------------------------------
-    // 5. Resposta
+    // 5. Reorganizar IDs para manter ordem sequencial
+    // -------------------------------------------------
+
+    await reorganizarIdsCardapio();
+
+
+    // -------------------------------------------------
+    // 6. Resposta
     // -------------------------------------------------
 
     return res.status(200).json({
@@ -562,6 +670,72 @@ app.post('/cardapio/refeicao', async (req, res) => {
 
   }
 
+});
+
+
+// =====================================================
+// POST - Salvar semana completa do cardápio em lote ordenado
+// =====================================================
+
+app.post('/cardapio/semana-completa', async (req, res) => {
+  const { dias } = req.body;
+
+  if (!Array.isArray(dias) || dias.length === 0) {
+    return res.status(400).json({ mensagem: 'Informe a lista de dias e refeições.' });
+  }
+
+  try {
+    const diasOrdenados = [...dias].sort((a, b) => (a.dia || '').localeCompare(b.dia || ''));
+
+    for (const diaItem of diasOrdenados) {
+      const { dia, refeicoes } = diaItem;
+      if (!dia || !Array.isArray(refeicoes)) continue;
+
+      const refeicoesOrdenadas = [...refeicoes].sort((a, b) => (a.hora ?? 0) - (b.hora ?? 0));
+
+      for (const ref of refeicoesOrdenadas) {
+        const hora = Number(ref.hora);
+        const comidas = Array.isArray(ref.comidas) ? ref.comidas : [];
+
+        let [horarios] = await db.query(
+          `SELECT id_horario FROM Horario WHERE dia = ? AND hora = ?`,
+          [dia, hora]
+        );
+
+        let idHorario;
+        if (horarios.length === 0) {
+          const [insertH] = await db.query(
+            `INSERT INTO Horario (dia, hora) VALUES (?, ?)`,
+            [dia, hora]
+          );
+          idHorario = insertH.insertId;
+        } else {
+          idHorario = horarios[0].id_horario;
+        }
+
+        await db.query(`DELETE FROM Cardapio WHERE fk_id_horario = ?`, [idHorario]);
+
+        for (const comida of comidas) {
+          if (typeof comida === 'string' && comida.trim()) {
+            await db.query(
+              `INSERT INTO Cardapio (comida, fk_id_horario) VALUES (?, ?)`,
+              [comida.trim(), idHorario]
+            );
+          }
+        }
+      }
+    }
+
+    await reorganizarIdsCardapio();
+
+    return res.status(200).json({
+      sucesso: true,
+      mensagem: 'Semana completa do cardápio salva e IDs organizados com sucesso!'
+    });
+  } catch (err) {
+    console.error('❌ Erro ao salvar semana completa do cardápio:', err);
+    return res.status(500).json({ mensagem: 'Erro ao salvar semana completa do cardápio.' });
+  }
 });
 
 
@@ -683,13 +857,20 @@ app.post('/cardapio', async (req, res) => {
     );
 
 
+    await reorganizarIdsCardapio();
+
+    const [novoItem] = await db.query(
+      `SELECT id_cardapio FROM Cardapio WHERE comida = ? AND fk_id_horario = ? ORDER BY id_cardapio DESC LIMIT 1`,
+      [comida.trim(), horarioId]
+    );
+
     return res.status(201).json({
 
       mensagem:
         'Item adicionado ao cardápio com sucesso!',
 
       id_cardapio:
-        result.insertId
+        novoItem[0]?.id_cardapio || result.insertId
 
     });
 
@@ -879,6 +1060,7 @@ app.delete('/cardapio/:id', async (req, res) => {
 
     }
 
+    await reorganizarIdsCardapio();
 
     return res.status(200).json({
 
@@ -919,12 +1101,12 @@ app.get('/avisos', async (req, res) => {
         titulo,
         categoria,
         descricao,
-        data,
+        DATE_FORMAT(data, '%Y-%m-%d') AS data,
         horario_comeco,
         horario_final,
         evento_dia,
         importante,
-        publicado,
+        DATE_FORMAT(publicado, '%Y-%m-%d') AS publicado,
         criado_em
       FROM Aviso
       ORDER BY data DESC, horario_comeco ASC, id_aviso DESC
@@ -948,12 +1130,12 @@ app.get('/avisos/:id', async (req, res) => {
         titulo,
         categoria,
         descricao,
-        data,
+        DATE_FORMAT(data, '%Y-%m-%d') AS data,
         horario_comeco,
         horario_final,
         evento_dia,
         importante,
-        publicado,
+        DATE_FORMAT(publicado, '%Y-%m-%d') AS publicado,
         criado_em
       FROM Aviso
       WHERE id_aviso = ?
@@ -1105,7 +1287,7 @@ app.delete('/avisos/:id', async (req, res) => {
 // CALENDÁRIO / EVENTOS - CRUD COMPLETO
 // =====================================================
 
-// GET - Buscar todos os eventos
+// GET - Buscar todos os eventos (inclui Eventos e Avisos unificados no Calendário)
 app.get('/eventos', async (req, res) => {
   try {
     const [results] = await db.query(`
@@ -1115,12 +1297,38 @@ app.get('/eventos', async (req, res) => {
         descricao,
         categoria,
         cor,
-        data,
+        DATE_FORMAT(data, '%Y-%m-%d') AS data,
         horario,
         local,
+        'evento' AS tipo,
         criado_em
       FROM Evento
-      ORDER BY data ASC, horario ASC
+      UNION ALL
+      SELECT
+        (100000 + id_aviso) AS id_evento,
+        titulo,
+        descricao,
+        categoria,
+        CASE
+          WHEN categoria = 'Reuniões' THEN 'verde'
+          WHEN categoria = 'Feriados' THEN 'laranja'
+          WHEN categoria = 'Acadêmico' THEN 'roxo'
+          WHEN categoria = 'Eventos' THEN 'laranja'
+          ELSE 'azul'
+        END AS cor,
+        DATE_FORMAT(data, '%Y-%m-%d') AS data,
+        CASE
+          WHEN evento_dia = 1 THEN 'Dia inteiro'
+          WHEN horario_comeco IS NOT NULL AND horario_final IS NOT NULL
+            THEN CONCAT(horario_comeco, ' às ', horario_final)
+          WHEN horario_comeco IS NOT NULL THEN horario_comeco
+          ELSE 'Horário a definir'
+        END AS horario,
+        'Aviso Escolar' AS local,
+        'aviso' AS tipo,
+        criado_em
+      FROM Aviso
+      ORDER BY data ASC, id_evento ASC
     `);
 
     return res.status(200).json(results);
@@ -1133,8 +1341,40 @@ app.get('/eventos', async (req, res) => {
 // GET - Buscar evento por ID
 app.get('/eventos/:id', async (req, res) => {
   const { id } = req.params;
+  const numId = Number(id);
 
   try {
+    if (numId >= 100000) {
+      const idAviso = numId - 100000;
+      const [results] = await db.query(`
+        SELECT
+          (100000 + id_aviso) AS id_evento,
+          titulo,
+          descricao,
+          categoria,
+          'azul' AS cor,
+          DATE_FORMAT(data, '%Y-%m-%d') AS data,
+          CASE
+            WHEN evento_dia = 1 THEN 'Dia inteiro'
+            WHEN horario_comeco IS NOT NULL AND horario_final IS NOT NULL
+              THEN CONCAT(horario_comeco, ' às ', horario_final)
+            WHEN horario_comeco IS NOT NULL THEN horario_comeco
+            ELSE 'Horário a definir'
+          END AS horario,
+          'Aviso Escolar' AS local,
+          'aviso' AS tipo,
+          criado_em
+        FROM Aviso
+        WHERE id_aviso = ?
+      `, [idAviso]);
+
+      if (results.length === 0) {
+        return res.status(404).json({ mensagem: 'Evento/Aviso não encontrado.' });
+      }
+
+      return res.status(200).json(results[0]);
+    }
+
     const [results] = await db.query(`
       SELECT
         id_evento,
@@ -1142,9 +1382,10 @@ app.get('/eventos/:id', async (req, res) => {
         descricao,
         categoria,
         cor,
-        data,
+        DATE_FORMAT(data, '%Y-%m-%d') AS data,
         horario,
         local,
+        'evento' AS tipo,
         criado_em
       FROM Evento
       WHERE id_evento = ?
@@ -1213,6 +1454,7 @@ app.post('/eventos', async (req, res) => {
 // PUT - Atualizar evento
 app.put('/eventos/:id', async (req, res) => {
   const { id } = req.params;
+  const numId = Number(id);
   const {
     titulo,
     descricao,
@@ -1223,13 +1465,31 @@ app.put('/eventos/:id', async (req, res) => {
     local
   } = req.body;
 
-  if (!titulo || !descricao || !categoria || !data || !horario || !local) {
+  if (!titulo || !descricao || !categoria || !data) {
     return res.status(400).json({
-      mensagem: 'Preencha título, descrição, categoria, data, horário e local.'
+      mensagem: 'Preencha título, descrição, categoria e data.'
     });
   }
 
   try {
+    if (numId >= 100000) {
+      const idAviso = numId - 100000;
+      const [result] = await db.query(`
+        UPDATE Aviso SET
+          titulo = ?,
+          descricao = ?,
+          categoria = ?,
+          data = ?
+        WHERE id_aviso = ?
+      `, [titulo.trim(), descricao.trim(), categoria.trim(), data, idAviso]);
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ mensagem: 'Aviso não encontrado.' });
+      }
+
+      return res.status(200).json({ mensagem: 'Aviso atualizado com sucesso!' });
+    }
+
     const [result] = await db.query(`
       UPDATE Evento SET
         titulo = ?,
@@ -1246,8 +1506,8 @@ app.put('/eventos/:id', async (req, res) => {
       categoria.trim(),
       cor || 'azul',
       data,
-      horario.trim(),
-      local.trim(),
+      (horario || '').trim(),
+      (local || '').trim(),
       id
     ]);
 
@@ -1265,8 +1525,20 @@ app.put('/eventos/:id', async (req, res) => {
 // DELETE - Excluir evento
 app.delete('/eventos/:id', async (req, res) => {
   const { id } = req.params;
+  const numId = Number(id);
 
   try {
+    if (numId >= 100000) {
+      const idAviso = numId - 100000;
+      const [result] = await db.query(`DELETE FROM Aviso WHERE id_aviso = ?`, [idAviso]);
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ mensagem: 'Aviso não encontrado.' });
+      }
+
+      return res.status(200).json({ mensagem: 'Aviso excluído com sucesso!' });
+    }
+
     const [result] = await db.query(`DELETE FROM Evento WHERE id_evento = ?`, [id]);
 
     if (result.affectedRows === 0) {
@@ -1311,6 +1583,7 @@ const PORTA = process.env.PORT || 3000;
 async function startServer() {
   try {
     await db.initDb();
+    await reorganizarIdsCardapio();
 
     const server = app.listen(PORTA, () => {
       console.log('======================================');

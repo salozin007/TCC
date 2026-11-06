@@ -5,12 +5,13 @@ import {
   ViewChild,
   inject,
 } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { LayoutEscolar } from '../compartilhados/layout-escolar/layout-escolar';
 import {
   CalendarioService,
   Evento,
+  DiaComCardapio,
 } from '../services/calendario.service';
 
 interface DiaCalendario {
@@ -18,12 +19,14 @@ interface DiaCalendario {
   chave: string;
   pertenceAoMes: boolean;
   eventos: Evento[];
+  temCardapio: boolean;
+  cardapio?: DiaComCardapio;
 }
 
 @Component({
   selector: 'app-calendario',
   standalone: true,
-  imports: [LayoutEscolar],
+  imports: [LayoutEscolar, RouterLink],
   templateUrl: './calendario.html',
   styleUrl: './calendario.scss',
 })
@@ -40,13 +43,17 @@ export class Calendario implements AfterViewInit {
     'Cultural',
     'Institucional',
     'Esportivo',
+    'Reuniões',
+    'Feriados',
+    'Eventos',
+    'Geral',
   ];
 
   readonly semana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-  // Agosto de 2026, conforme o protótipo.
-  ano = 2026;
-  mes = 7;
+  // Data atual ou parâmetro da rota
+  ano = new Date().getFullYear();
+  mes = new Date().getMonth();
   categoria = 'Todos';
   diaSelecionado = '';
   eventoSelecionado: Evento | null = null;
@@ -115,6 +122,11 @@ export class Calendario implements AfterViewInit {
     );
   }
 
+  get cardapioDoDiaSelecionado(): DiaComCardapio | undefined {
+    if (!this.diaSelecionado) return undefined;
+    return this.calendarioService.cardapioPorDia()[this.diaSelecionado];
+  }
+
   get dias(): DiaCalendario[] {
     const primeiroDia = new Date(this.ano, this.mes, 1);
     const inicio = new Date(
@@ -122,6 +134,8 @@ export class Calendario implements AfterViewInit {
       this.mes,
       1 - primeiroDia.getDay(),
     );
+
+    const mapaCardapio = this.calendarioService.cardapioPorDia();
 
     return Array.from({ length: 42 }, (_, indice) => {
       const data = new Date(
@@ -136,6 +150,8 @@ export class Calendario implements AfterViewInit {
         String(data.getDate()).padStart(2, '0'),
       ].join('-');
 
+      const cardapioInfo = mapaCardapio[chave];
+
       return {
         numero: data.getDate(),
         chave,
@@ -143,6 +159,8 @@ export class Calendario implements AfterViewInit {
         eventos: this.eventosDaCategoria.filter(
           evento => evento.data === chave,
         ),
+        temCardapio: Boolean(cardapioInfo && cardapioInfo.totalItens > 0),
+        cardapio: cardapioInfo,
       };
     });
   }

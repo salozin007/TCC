@@ -2,6 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, catchError, of } from 'rxjs';
 import { Aviso, DadosEscolaService } from './dados-escola.service';
+import { CalendarioService } from './calendario.service';
 
 export interface AvisoAdministrativo extends Aviso {
   status: 'Publicado' | 'Rascunho';
@@ -51,6 +52,11 @@ function mapearDoBackend(item: AvisoBackend): AvisoAdministrativo {
       ? `${inicio} às ${termino}`
       : inicio || 'Horário a definir';
 
+  const dataFormatada = item.data ? String(item.data).slice(0, 10) : '';
+  const publicadoFormatado = item.publicado
+    ? String(item.publicado).slice(0, 10)
+    : dataFormatada;
+
   return {
     id: item.id_aviso,
     titulo: item.titulo,
@@ -60,8 +66,8 @@ function mapearDoBackend(item: AvisoBackend): AvisoAdministrativo {
     etiqueta: meta.etiqueta,
     cor: meta.cor,
     icone: meta.icone,
-    data: item.data,
-    publicado: item.publicado || item.data,
+    data: dataFormatada,
+    publicado: publicadoFormatado,
     horario,
     inicio,
     termino,
@@ -76,6 +82,7 @@ export class AvisosService {
   private readonly http = inject(HttpClient);
   private readonly apiUrl = 'http://localhost:3000/avisos';
   private readonly exemplos = inject(DadosEscolaService);
+  private readonly calendario = inject(CalendarioService);
 
   private readonly registros = signal<AvisoAdministrativo[]>(
     this.exemplos.avisos.map(aviso => ({
@@ -165,6 +172,7 @@ export class AvisosService {
               aviso.id === id ? { ...aviso, ...dados } : aviso,
             ),
           );
+          this.calendario.carregar();
         }),
         catchError(err => {
           // Fallback local se backend falhar
@@ -173,6 +181,7 @@ export class AvisosService {
               aviso.id === id ? { ...aviso, ...dados } : aviso,
             ),
           );
+          this.calendario.carregar();
           return of({ sucesso: true, local: true });
         }),
       );
@@ -195,6 +204,7 @@ export class AvisosService {
         };
 
         this.registros.update(lista => [novo, ...lista]);
+        this.calendario.carregar();
       }),
       catchError(err => {
         const agora = new Date();
@@ -211,6 +221,7 @@ export class AvisosService {
         };
 
         this.registros.update(lista => [novo, ...lista]);
+        this.calendario.carregar();
         return of({ sucesso: true, local: true });
       }),
     );
@@ -220,9 +231,11 @@ export class AvisosService {
     return this.http.delete(`${this.apiUrl}/${id}`).pipe(
       tap(() => {
         this.registros.update(lista => lista.filter(aviso => aviso.id !== id));
+        this.calendario.carregar();
       }),
       catchError(err => {
         this.registros.update(lista => lista.filter(aviso => aviso.id !== id));
+        this.calendario.carregar();
         return of({ sucesso: true, local: true });
       }),
     );

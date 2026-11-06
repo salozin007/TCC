@@ -42,19 +42,36 @@
                   type="button"
                   [class.fora]="!dia.pertenceAoMes"
                   [class.selecionado]="diaSelecionado === dia.chave"
+                  [class.tem-refeicao]="dia.temCardapio"
                   [attr.aria-pressed]="diaSelecionado === dia.chave"
                   [attr.aria-label]="
                     dataCompleta(dia.chave) + ', ' +
-                    dia.eventos.length + ' evento(s)'
+                    dia.eventos.length + ' evento(s)' +
+                    (dia.temCardapio ? ', refeição cadastrada' : '')
                   "
                   (click)="selecionarDia(dia)"
                 >
-                  <strong>{{ dia.numero }}</strong>
-  
+                  <div class="dia__topo">
+                    <strong>{{ dia.numero }}</strong>
+                    @if (dia.temCardapio) {
+                      <span
+                        class="dia__badge-refeicao"
+                        title="Refeição cadastrada neste dia ({{ dia.cardapio?.totalRefeicoes }} refeição(ões) registrada(s))"
+                      >
+                        <span aria-hidden="true">🍲</span>
+                        <span class="dia__badge-texto">Refeição</span>
+                      </span>
+                    }
+                  </div>
+
                   <span class="dia__eventos">
                     @for (evento of dia.eventos; track evento.id) {
-                      <span class="dia__evento" [title]="evento.titulo">
-                        <span aria-hidden="true">●</span>
+                      <span
+                        class="dia__evento"
+                        [class.dia__evento--aviso]="evento.tipo === 'aviso'"
+                        [title]="(evento.tipo === 'aviso' ? '[Aviso Oficial] ' : '[Evento] ') + evento.titulo"
+                      >
+                        <span aria-hidden="true">{{ evento.tipo === 'aviso' ? '📢' : '●' }}</span>
                         {{ evento.titulo }}
                       </span>
                     }
@@ -108,29 +125,54 @@
                     <strong>{{ dia(evento.data) }}</strong>
                     <small>{{ mesCurto(evento.data) }}</small>
                   </span>
-  
+
                   <span class="evento__texto">
                     <strong>{{ evento.titulo }}</strong>
                     <small>◷ {{ evento.horario }}</small>
                     <small>⌖ {{ evento.local }}</small>
-                    <span [class]="'etiqueta ' + evento.cor">
-                      {{ evento.categoria }}
+                    <span [class]="'etiqueta ' + (evento.cor || 'azul')">
+                      {{ evento.tipo === 'aviso' ? '📢 Aviso: ' : '' }}{{ evento.categoria }}
                     </span>
                   </span>
-  
+
                   <span aria-hidden="true">›</span>
                 </button>
               } @empty {
                 <p class="vazio">
-                  Nenhum evento para o período e a categoria selecionados.
+                  Nenhum evento ou comunicado para o período e a categoria selecionados.
                 </p>
               }
             </div>
+
+            @if (cardapioDoDiaSelecionado; as cardapio) {
+              <div class="painel-comprovacao" aria-live="polite">
+                <div class="comprovacao__cabecalho">
+                  <span class="comprovacao__icone" aria-hidden="true">🍲</span>
+                  <div>
+                    <h3>Refeição Cadastrada</h3>
+                    <p>Cardápio confirmado para {{ dataCompleta(diaSelecionado) }}</p>
+                  </div>
+                </div>
+
+                <div class="comprovacao__refeicoes">
+                  @for (ref of cardapio.refeicoes; track ref.nome) {
+                    <div class="comprovacao__refeicao-item">
+                      <strong>{{ ref.nome }}:</strong>
+                      <span>{{ ref.comidas.join(', ') }}</span>
+                    </div>
+                  }
+                </div>
+
+                <a class="comprovacao__botao-link" routerLink="/cardapio">
+                  Ver página do cardápio completo ›
+                </a>
+              </div>
+            }
           </section>
         </aside>
       </div>
     </div>
-  
+
     <dialog #detalhes class="modal" aria-labelledby="titulo-detalhes-evento">
       <button
         class="modal__fechar"
@@ -140,20 +182,20 @@
       >
         ×
       </button>
-  
+
       @if (eventoSelecionado; as evento) {
-        <span [class]="'etiqueta ' + evento.cor">
-          {{ evento.categoria }}
+        <span [class]="'etiqueta ' + (evento.cor || 'azul')">
+          {{ evento.tipo === 'aviso' ? '📢 Aviso Oficial: ' : '📅 Evento: ' }}{{ evento.categoria }}
         </span>
-  
+
         <h2 id="titulo-detalhes-evento">{{ evento.titulo }}</h2>
-  
+
         <p>
           <strong>Data:</strong> {{ dataCompleta(evento.data) }}<br />
           <strong>Horário:</strong> {{ evento.horario }}<br />
-          <strong>Local:</strong> {{ evento.local }}
+          <strong>{{ evento.tipo === 'aviso' ? 'Origem:' : 'Local:' }}</strong> {{ evento.local }}
         </p>
-  
+
         <p>{{ evento.descricao }}</p>
       }
     </dialog>
